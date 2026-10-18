@@ -1,0 +1,1 @@
+{"_comment":"Merge this 'port' section into the project's .ghostslice.json. GhostPort reads pack, budget, and overrides from here; GhostSlice ignores sections it does not own only if its loader allows them, so check `ghostslice doctor` after merging.","port":{"overrides":{"merge_units":[],"order_after":{}},"pack":"python-upgrade","test_command":null,"unit_budget_tokens":20000}}
