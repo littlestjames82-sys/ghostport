@@ -12,6 +12,11 @@ from .tokens import METHOD
 
 
 def build_plan(project: Path, pack: Pack) -> dict:
+    """Scan ``project`` with ``pack`` and return the full plan dict.
+
+    The dict is the exact shape written to port-plan.json: scan summary,
+    units in port order, blockers, token total, and profile settings.
+    """
     project = Path(project)
     profile = load_port_profile(project)
     scan = scan_project(project, pack)
@@ -34,6 +39,7 @@ def build_plan(project: Path, pack: Pack) -> dict:
 
 
 def render_plan_md(plan: dict) -> str:
+    """Render a plan dict as the PORT_PLAN.md markdown text."""
     lines = [f"# GhostPort plan: pack {plan['pack']['id']} v{plan['pack']['version']} ({plan['pack']['date']})",
              "", f"Project: {plan['project']}",
              f"Token figures are estimates ({plan['token_method']}).",
@@ -71,6 +77,11 @@ def render_plan_md(plan: dict) -> str:
 
 
 def write_plan(project: Path, pack: Pack, out_dir: Path | None = None) -> tuple[dict, Path, Path]:
+    """Build a plan and write PORT_PLAN.md + port-plan.json.
+
+    Files go to ``out_dir``, or to the project directory when it is
+    omitted. Returns ``(plan, json_path, md_path)``.
+    """
     plan = build_plan(project, pack)
     out_dir = Path(out_dir) if out_dir else Path(project)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -16,7 +16,7 @@ GhostSlice bundle per unit: the unit in full, already-ported
 dependencies as stable context, not-yet-ported callers as signatures,
 and a checklist tied to the unit's tests.
 
-By Ghost Developer Studio. MIT licensed (planned). **Zero dependencies**
+By Ghost Developer Studio. MIT licensed (see `LICENSE`). **Zero dependencies**
 (Python standard library only), **local-first**: no network calls, no
 telemetry, your code never leaves the machine.
 
@@ -24,9 +24,11 @@ Position in the Ghost stack: GhostSlice builds task bundles,
 GhostPort builds *migration* bundles from pattern state,
 GhostVerify checks each ported unit when it comes back.
 
-> Status: v0.1 is in build (Oct 14, 2026). This README describes the
-> v0.1 scope in `PLAN.md`. Nothing here is a claim that a release exists
-> yet; check the repo's releases before relying on install steps.
+> Status: v0.1.0, as in `pyproject.toml`. This README describes the
+> v0.1 scope in `PLAN.md`: one pack (`python-upgrade`), seven commands
+> (`scan`, `plan`, `bundle`, `claim`, `verify`, `status`, `packs`), and
+> the local ledger. The test suite under `tests/` runs against this
+> tree; see Tests below.
 
 ## What GhostPort does not do
 
@@ -38,15 +40,27 @@ GhostVerify checks each ported unit when it comes back.
   "this project is ready to upgrade". A pattern pack only finds what
   its patterns know, and the scan names the languages it does not cover.
 
-## Install (once v0.1 lands)
+## Install
+
+From a checkout of this repo:
 
 ```bash
 pip install .
 ghostport --help
 ```
 
-Requires Python 3.10 or newer. Until then, run from a checkout with
-`PYTHONPATH=src python3 -m ghostport --help` if `src/` is present.
+Requires Python 3.10 or newer. No packages are installed besides
+GhostPort itself: the runtime is the Python standard library only.
+
+Without installing, run it from the checkout instead (this is also how
+the test suite drives it):
+
+```bash
+PYTHONPATH=src python3 -m ghostport --help
+```
+
+Every command has its own help, for example
+`ghostport scan --help` or `ghostport bundle --help`.
 
 ## Quickstart
 
@@ -54,26 +68,54 @@ Requires Python 3.10 or newer. Until then, run from a checkout with
 ghostport scan  ~/my-project --pack python-upgrade
 ghostport plan  ~/my-project --pack python-upgrade
 ghostport bundle ~/my-project --unit unit-legacy-storage -o /tmp/port-unit-001
+ghostport claim  ~/my-project --unit unit-legacy-storage --by ryan
+ghostport verify ~/my-project --unit unit-legacy-storage --report /path/to/ghostverify-report.json
 ghostport status ~/my-project
+ghostport packs  --pack python-upgrade
 ```
 
+`--pack` defaults to `python-upgrade` everywhere it appears, so the
+short forms (`ghostport scan ~/my-project`) do the same thing. `scan`,
+`plan`, and `status` also accept `--json` for a machine-readable view.
+Exit code is 0 on success and 2 on a usage, pack, or profile error.
+
 1. **scan** lists every pattern hit (file, line, pattern id, plain-words
-   description, unit), the files scanned with zero hits, and the
-   languages in the project the pack does not cover. It also prints the
-   pack version and date, so a stale pack looks stale.
-2. **plan** writes `PORT_PLAN.md` and `port-plan.json`: units in
-   dependency order (leaves first), covering tests attached where known
-   (method labelled), per-unit estimated token totals, and blockers.
-   A cycle in the touched set is combined into one unit and named,
-   never silently ordered.
-3. **bundle** exports one unit as a GhostSlice bundle plus `UNIT.md`:
+   description), the files scanned with zero hits, and the languages in
+   the project the pack does not cover. It also prints the pack version
+   and date, so a stale pack looks stale. Scan writes nothing.
+2. **plan** writes `PORT_PLAN.md` and `port-plan.json` (into the project
+   directory, or `--out DIR`): units in dependency order (leaves
+   first), covering tests attached where known (method labelled),
+   per-unit estimated token totals, and blockers. A cycle in the touched
+   set is combined into one unit and named, never silently ordered.
+   Plan also records a `planned` entry per unit in the ledger.
+3. **bundle** exports one unit as a bundle folder (`manifest.json`,
+   `PROMPT.md`, `files/`, and `UNIT.md`): the unit and its covering
+   tests in full, related dependency and caller units as signatures,
    patterns to fix with locations, contract notes (callers included at
    signatures that must keep working), the test command from the
-   profile if any, and a state box. The bundle validates with
+   profile if any, and a state box. Without `-o`, the bundle goes to
+   `<project>/.ghostport/bundles/<unit>`. The bundle validates with
    `ghostslice check`.
-4. **status** is the resumption view for a migration that spans weeks:
+4. **claim** records in the ledger that someone says a unit is ported:
+   `ported-claimed`, with `--by` naming who. A claim is not proof.
+5. **verify** records a unit as `verified`, and is the only way to do
+   so: `--report` must point at a GhostVerify post report, which is
+   validated and hashed into the ledger. There is no flag to set
+   verified by hand.
+6. **status** is the resumption view for a migration that spans weeks:
    units planned / bundled / ported-claimed / verified, estimated tokens
    remaining, and the next unit in order.
+7. **packs** shows where a pack is searched for and, with `--pack`,
+   lists its patterns with their dated source references.
+
+Try it on the bundled demo (read-only: this scan changes nothing):
+
+```bash
+ghostport scan examples/demo_project --pack python-upgrade
+# 3 hits: PYUP004 in legacy/plugin_loader.py, PYUP003 in legacy/report.py,
+#         PYUP006 in legacy/storage.py
+```
 
 ## The first pack: `python-upgrade`
 
@@ -103,10 +145,11 @@ The pack as shipped in `patterns/python-upgrade.json` (v1.0.0,
 Pattern hits are findings only: file + line + pattern id, in the same
 redaction-safe style as GhostSlice's secrets guard.
 
-Known v1.0.0 pack gaps, pinned by tests in `tests/test_pack_gaps.py`
-and recorded in `REPORT_B.md`: the idiomatic
-`from distutils.core import setup` form is not hit by PYUP005's
-matcher, and `Thread.isAlive()` is not in PYUP007's name list.
+Two gaps found against the first cut of this pack are fixed, and the
+tests that exposed them now pass as regression tests in
+`tests/test_pack_gaps.py` (history in `REPORT_B.md` and
+`FIX_REPORT.md`): the idiomatic `from distutils.core import setup` form
+is hit by PYUP005, and `Thread.isAlive()` is in PYUP007's name list.
 `fractions.gcd` (removed 3.9) is a proposed thirteenth pattern, with a
 fixture pair in the test suite, but is **not** in pack v1.0.0.
 
@@ -131,54 +174,79 @@ GhostPort reads a `port` section in the project's `.ghostslice.json`:
 {
   "port": {
     "pack": "python-upgrade",
-    "unit_budget_tokens": 20000,
+    "budget_tokens": 20000,
     "test_command": null,
-    "overrides": { "merge_units": [], "order_after": {} }
+    "merge": [],
+    "pin_first": [],
+    "order": []
   }
 }
 ```
 
-Static graphs miss dynamic calls (registries, string dispatch), so the
-profile supports a manual reorder/merge override. When an override is
-used, the plan says so. See `examples/ghostslice-profile-snippet.json`.
+All keys are optional. The supported keys are exactly: `pack`,
+`budget_tokens` (per-unit budget), `test_command` (recorded in
+`UNIT.md`; GhostPort never runs it), `merge` (a list of lists of unit
+ids or files to combine into one unit), `pin_first` and `order`
+(tie-breakers only: they choose among units whose dependencies are
+already satisfied, and never override dependency order), and
+`pattern_overrides` (accepted by the loader; it has no other effect in
+v0.1). An unknown key fails loudly with a ProfileError
+instead of being silently ignored, so a misspelt key is caught at plan
+time. Copy-ready version: `examples/ghostslice-profile-snippet.json`.
 
-Token totals and costs are **estimates** from GhostSlice's estimator
-and its local, dated price table, labelled as estimates everywhere,
-never presented as live prices or billed amounts.
+Static graphs miss dynamic calls (registries, string dispatch), so the
+profile supports a manual merge/reorder for exactly that case. When an
+override is used, the plan says so.
+
+Token totals are **estimates**, labelled as estimates everywhere and
+never presented as live prices or billed amounts. The estimator is
+GhostSlice's when a GhostSlice checkout or install is reachable (so a
+bundle's figures agree with `ghostslice check`), and otherwise a
+documented fallback of `ceil(len(text) / 4)`; the plan and every bundle
+manifest name the method used in their `token_method` field.
 
 ## Examples
 
 `examples/demo_project/` is a three-file legacy project with one hit
 per file and a real dependency chain; `examples/sample_port_plan/`
-holds labelled sample outputs. See `examples/README.md`.
+holds labelled sample outputs; `examples/fixture/` is a larger sample
+project (ordering chain plus a two-node cycle) of the kind the tests
+use. See `examples/README.md` for the walkthrough.
 
 ## Tests
+
+Run from the repo root:
 
 ```bash
 python3 -m unittest discover -s tests
 ```
 
-The suite is stdlib `unittest` only. Layer 1 validates the fixtures
-themselves (a positive and a look-alike negative file per pattern, an
-ordering chain, a two-node cycle, a resume ledger whose verified count
-must be zero). Layer 2 drives the real CLI (`scan` / `plan` / `bundle`
-/ `status`) against copies of those fixtures.
+A green run ends with `OK`. The suite is stdlib `unittest` only; do
+not substitute pytest, the suite is not written for it. Layer 1
+validates the fixtures themselves (a positive and a look-alike
+negative file per pattern, an ordering chain, a two-node cycle, a
+resume ledger whose verified count must be zero). Layer 2 drives the
+real CLI (`scan` / `plan` / `bundle` / `status`) against copies of
+those fixtures, and asserts that scan and bundle leave the source
+project byte-identical.
 
-## Layout (planned v0.1)
+## Layout
 
 ```
 src/ghostport/   core: scanner/pattern engine, unit formation, graph
-                 sequencing, bundle export, ledger, CLI
+                 sequencing, bundle export, ledger, CLI; a bundled copy
+                 of the pack lives in src/ghostport/packs/
 patterns/        pattern packs as data files (id, description, dated
                  reference per pattern)
 tests/           unittest suite + fixtures
 examples/        demo project, sample plan outputs, profile snippet
 PLAN.md          the v0.1 plan this README follows
+LICENSE          MIT licence
 ```
 
 ## Licence
 
-MIT, planned with the v0.1 release, same pattern as GhostSlice,
-Agent Seatbelt, and Ghost Hands. No paid layer is decided; additional
-maintained pattern packs are the only paid candidate named in the
-plan, and nothing is priced.
+MIT (see `LICENSE`), same pattern as GhostSlice, Agent Seatbelt, and
+Ghost Hands. No paid layer is decided; additional maintained pattern
+packs are the only paid candidate named in the plan, and nothing is
+priced.

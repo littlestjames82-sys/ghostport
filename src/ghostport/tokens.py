@@ -34,11 +34,13 @@ if _gs_estimate is not None:
     METHOD = f"ghostslice estimator ({_gs_method}); estimates only"
 
     def estimate_tokens(text: str) -> int:
+        """Estimate the token count of ``text`` (GhostSlice estimator)."""
         return int(_gs_estimate(text, "python"))
 else:
     METHOD = "ghostport-estimate-v1: ceil(len(text)/4), estimates only"
 
     def estimate_tokens(text: str) -> int:
+        """Estimate the token count of ``text`` as ceil(len(text) / 4)."""
         if not text:
             return 0
         return int(math.ceil(len(text) / 4))

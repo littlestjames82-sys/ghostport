@@ -20,9 +20,15 @@ from .tokens import METHOD, estimate_tokens
 
 
 def signatures_slice(text: str) -> str:
+    """Return an extractive signatures-only slice of Python source.
+
+    Keeps imports, class and function signatures, and the first line of
+    each function docstring. Returns the source unchanged when it does
+    not parse, so a bundle never silently drops a file.
+    """
     try:
         tree = ast.parse(text)
-    except SyntaxError:
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
         return text
     out = []
     for node in tree.body:
@@ -47,6 +53,13 @@ def signatures_slice(text: str) -> str:
 
 
 def build_unit_bundle(project: Path, plan: dict, unit_id: str, out: Path) -> dict:
+    """Write the bundle for ``unit_id`` into ``out`` and return its manifest.
+
+    The manifest gains a ``bundle_manifest_sha256`` entry (the hash of
+    the written manifest.json) before it is returned. Raises ValueError
+    when ``unit_id`` is not a unit in ``plan``. Source files are read
+    only; nothing in ``project`` is modified.
+    """
     project, out = Path(project), Path(out)
     units = {u["id"]: u for u in plan["units"]}
     if unit_id not in units:
@@ -65,11 +78,23 @@ def build_unit_bundle(project: Path, plan: dict, unit_id: str, out: Path) -> dic
                 mode_by_file.setdefault(f, "signatures")
     out.mkdir(parents=True, exist_ok=True)
     (out / "files").mkdir(exist_ok=True)
+    project_root = project.resolve()
+    files_root = (out / "files").resolve()
     entries, prompt_parts = [], []
     for rel, mode in sorted(mode_by_file.items()):
         src = project / rel
         if not src.is_file():
             continue
+        # Containment: a crafted/hand-edited plan entry such as "../evil.py"
+        # (or an absolute path, or a symlink out of the tree) used to be read
+        # from outside the project, copied into PROMPT.md, and written
+        # outside the bundle's files/ directory. Refuse escaping entries.
+        src_resolved = src.resolve()
+        dest_resolved = (files_root / rel).resolve()
+        if not src_resolved.is_relative_to(project_root):
+            raise ValueError(f"bundle: file escapes the project: {rel}")
+        if not dest_resolved.is_relative_to(files_root):
+            raise ValueError(f"bundle: destination escapes the bundle: {rel}")
         original = src.read_text(encoding="utf-8", errors="replace")
         sliced = original if mode == "full" else signatures_slice(original)
         dest = out / "files" / rel
@@ -98,6 +123,7 @@ def build_unit_bundle(project: Path, plan: dict, unit_id: str, out: Path) -> dic
 
 
 def render_unit_md(plan: dict, unit: dict) -> str:
+    """Render the UNIT.md checklist for one unit of ``plan`` as text."""
     test_cmd = plan.get("profile", {}).get("test_command") or "(none configured in .ghostslice.json port.test_command)"
     lines = [f"# UNIT {unit['id']} (order {unit['order']} of {len(plan['units'])})", "",
              "GhostPort is a planner: this checklist is for the human or agent doing the port.",

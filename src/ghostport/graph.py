@@ -14,6 +14,11 @@ from pathlib import Path
 
 
 def module_name(project: Path, path: Path) -> str:
+    """Return the dotted module name for ``path`` inside ``project``.
+
+    A leading ``src/`` component is dropped and ``__init__.py`` maps to
+    its package, so ``src/pkg/mod.py`` becomes ``pkg.mod``.
+    """
     rel = path.relative_to(project)
     parts = list(rel.parts)
     if len(parts) > 1 and parts[0] == "src":
@@ -26,6 +31,7 @@ def module_name(project: Path, path: Path) -> str:
 
 
 def build_module_map(project: Path, py_files: list[Path]) -> dict[str, str]:
+    """Map each file's dotted module name to its project-relative path."""
     out = {}
     for path in py_files:
         out[module_name(project, path)] = path.relative_to(project).as_posix()
@@ -36,7 +42,7 @@ def imports_of(path: Path, mod: str, module_map: dict[str, str]) -> set[str]:
     """Project-internal files this file imports (best-effort, static)."""
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-    except SyntaxError:
+    except (SyntaxError, ValueError, RecursionError, MemoryError, OSError):
         return set()
     deps = set()
     pkg_parts = mod.split(".")[:-1] if "__init__" not in path.name else mod.split(".")
@@ -52,15 +58,20 @@ def imports_of(path: Path, mod: str, module_map: dict[str, str]) -> set[str]:
             elif node.module:
                 candidates = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
         for cand in candidates:
+            if cand == mod:
+                continue  # a file importing itself is not a dependency
             if cand in module_map:
-                target = module_map[cand]
-                if target != path.name:
-                    deps.add(target)
+                # Old check compared the target's project-relative path to
+                # path.name (basename), so a nested file's self-import was
+                # never filtered here; identity is by module, above.
+                deps.add(module_map[cand])
             else:
                 # longest project-module prefix wins
                 parts = cand.split(".")
                 for i in range(len(parts) - 1, 0, -1):
                     prefix = ".".join(parts[:i])
+                    if prefix == mod:
+                        break  # prefix is this file's own module (package __init__)
                     if prefix in module_map:
                         deps.add(module_map[prefix])
                         break
@@ -69,13 +80,14 @@ def imports_of(path: Path, mod: str, module_map: dict[str, str]) -> set[str]:
 
 
 def unit_id_for(rel_path: str) -> str:
+    """Return the stable unit id for a project-relative file path."""
     stem = rel_path[:-3] if rel_path.endswith(".py") else rel_path
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", stem).strip("-").lower()
     return f"unit-{slug}"
 
 
 def _scc(nodes: list[str], edges: dict[str, set[str]]) -> list[list[str]]:
-    """Tarjan SCC, iterative."""
+    """Return the strongly connected components of a directed graph (Tarjan, iterative)."""
     index, low, onstack, stack, result = {}, {}, set(), [], []
     counter = [0]
 
@@ -117,17 +129,28 @@ def _scc(nodes: list[str], edges: dict[str, set[str]]) -> list[list[str]]:
 
 
 def form_units(project: Path, scan: dict, profile: dict | None = None) -> dict:
-    """Form units from scan hits, combine cycles, sequence leaves-first."""
+    """Form units from a scan result and order them leaves-first.
+
+    One unit per file with hits, merged or reordered only as the profile
+    asks; units in a dependency cycle are combined into one unit and
+    also reported in the returned ``blockers`` list. Returns a dict with
+    ``units``, ``blockers``, token totals, and the import maps used.
+    """
     project = Path(project)
     profile = profile or {}
     from .scanner import iter_project_files
     py_files, _ = iter_project_files(project)
     module_map = build_module_map(project, py_files)
-    rel_by_mod = module_map
+    # Per-file module names computed directly. The old reverse lookup
+    # (next(m for m, f in module_map.items() if f == rel)) raised
+    # StopIteration whenever two files collapsed to one module name in the
+    # map (e.g. foo.py and src/foo.py), crashing the whole plan.
+    mod_by_rel = {path.relative_to(project).as_posix(): module_name(project, path)
+                  for path in py_files}
     file_imports = {}
     for path in py_files:
         rel = path.relative_to(project).as_posix()
-        mod = next(m for m, f in rel_by_mod.items() if f == rel)
+        mod = mod_by_rel[rel]
         deps = imports_of(path, mod, module_map)
         deps.discard(rel)
         file_imports[rel] = deps
@@ -191,7 +214,7 @@ def form_units(project: Path, scan: dict, profile: dict | None = None) -> dict:
         name = Path(rel).name
         if not (name.startswith("test_") or name.endswith("_test.py") or "/tests/" in f"/{rel}"):
             continue
-        mod = next(m for m, f in rel_by_mod.items() if f == rel)
+        mod = mod_by_rel[rel]
         for dep in imports_of(path, mod, module_map):
             uid = file_to_unit.get(dep)
             if uid:

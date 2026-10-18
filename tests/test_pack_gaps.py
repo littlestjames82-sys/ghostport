@@ -1,22 +1,22 @@
-"""Known-gap tests against the v1.0.0 pack (documented in REPORT_B.md).
+"""Former known-gap tests against the v1.0.0 pack, now regression tests.
 
 These two tests encode behaviour the PLAN's verification bar implies
-(a pattern must hit the real-world form of the deprecated API) but that
-core v1.0.0's matchers miss, found by Agent B while reconciling the
-fixtures to Agent A's pack on Oct 14, 2026:
+(a pattern must hit the real-world form of the deprecated API). They
+were written against two real gaps found by Agent B while reconciling
+the fixtures to Agent A's pack on Oct 14, 2026 (see REPORT_B.md):
 
-1. PYUP005 (distutils) uses an ``import_module`` matcher. Core's scanner
-   matches ``from X import ...`` only when the module equals the listed
-   name exactly, so the idiomatic ``from distutils.core import setup``
-   produces NO hit.
-2. PYUP007 (threading camelCase) lists currentThread / activeCount /
+1. PYUP005 (distutils) uses an ``import_module`` matcher. The scanner
+   originally matched ``from X import ...`` only when the module equalled
+   the listed name exactly, so the idiomatic
+   ``from distutils.core import setup`` produced NO hit.
+2. PYUP007 (threading camelCase) listed currentThread / activeCount /
    isDaemon / setDaemon, but not ``isAlive`` - ``Thread.isAlive()`` was
    removed in Python 3.10 on the same cleanup the pattern cites.
 
-Both tests are expected to FAIL until the pack/matchers are fixed by
-the core owner. They are kept in the suite, unskipped, so the failure
-stays visible instead of being silently absorbed. Fixes belong in
-patterns/** / src/**, which are outside Agent B's file ownership.
+Both gaps were fixed by the core owner (see FIX_REPORT.md: the scanner
+now matches a listed module or any submodule of it, and ``isAlive`` was
+added to PYUP007). Both tests now PASS and are kept in the suite,
+unskipped, as regression tests so the gaps cannot silently return.
 """
 from __future__ import annotations
 
