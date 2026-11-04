@@ -25,4 +25,4 @@ jobs:
         # tests/fixtures/ordering_project is a fixture project the suite
         # feeds to GhostPort as input; its own test file is not part of
         # this suite and is excluded from collection.
-        run: python -m pytest -q --ignore=tests/fixtures/ordering_project
+        run: python -m pytest -q tests --ignore=tests/fixtures/ordering_project
