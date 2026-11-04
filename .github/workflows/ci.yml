@@ -15,11 +15,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Python 3.10 is excluded for now: two TestScannerRecursion
-        # hardening tests fail there (the deep-expression parse guard
-        # behaves differently on 3.10's parser). pyproject still declares
-        # >=3.10; closing that gap is a product decision (fix the guard
-        # for 3.10 or raise the floor). Suite is green on 3.11 and 3.12.
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

@@ -51,7 +51,7 @@ pip install .
 ghostport --help
 ```
 
-Requires Python 3.10 or newer. No packages are installed besides
+Requires Python 3.11 or newer. No packages are installed besides
 GhostPort itself: the runtime is the Python standard library only.
 
 Without installing, run it from the checkout instead (this is also how
