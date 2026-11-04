@@ -1,5 +1,6 @@
 # GhostPort
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/littlestjames82-sys/ghostport/actions/workflows/ci.yml/badge.svg)](https://github.com/littlestjames82-sys/ghostport/actions/workflows/ci.yml/actions)
 
 **Port a codebase one proven slice at a time.**
 
